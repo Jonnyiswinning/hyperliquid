@@ -95,6 +95,50 @@ python -m solbot.runners.live
 
 > Live order endpoints on Hyperliquid require signed `/exchange` payloads. This project keeps the adapter boundary (`HyperliquidClient.place_order`) explicit so a hardened signer implementation can be swapped in without changing strategy/risk code.
 
+
+## Where to adjust for API + live trading
+
+If you want this bot to actually send live Hyperliquid orders, these are the exact places to change:
+
+1. **Credentials / environment**
+   - Set secrets in `.env` from `.env.example`:
+     - `WALLET_ADDRESS`
+     - `PRIVATE_KEY`
+     - optional Telegram vars
+   - Values are read in `config.toml` via `${ENV_KEY}` interpolation handled by `solbot/config/settings.py`.
+
+2. **Runtime mode + trading parameters**
+   - Edit `config.toml`:
+     - `runtime.paper_mode = false` to enable live runner
+     - risk settings under `[risk]`
+     - execution settings under `[execution]`
+     - strategy thresholds under `[strategy]`
+
+3. **Hyperliquid live order wiring (critical)**
+   - Implement signed exchange calls in:
+     - `solbot/connectors/hyperliquid.py`
+       - `HyperliquidClient.place_order(...)`
+       - `HyperliquidClient.cancel(...)`
+   - Those methods are currently the intentional integration boundary and currently raise `NotImplementedError`.
+
+4. **Order behavior / routing**
+   - Order request construction happens in `solbot/runners/core.py` (open/close/flatten).
+   - Execution retry/rejection behavior is in `solbot/execution/executor.py` (`LiveExecutor`).
+
+5. **Startup safety checks**
+   - Live-mode guardrails are in `solbot/runners/live.py` (rejects missing key and rejects when paper mode is true).
+
+### Minimal live rollout sequence
+
+1. Keep `runtime.paper_mode = true` and run paper for several sessions.
+2. Implement and test signed `/exchange` in `HyperliquidClient.place_order/cancel`.
+3. Add a small notional cap in `config.toml` (`max_gross_exposure_usd`, `max_leverage`, `per_trade_risk_pct`).
+4. Switch to `runtime.paper_mode = false` and run:
+
+```bash
+python -m solbot.runners.live
+```
+
 ## Backtest
 
 ```bash
