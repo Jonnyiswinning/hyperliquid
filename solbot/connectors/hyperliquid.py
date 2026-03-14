@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 import time
 
 import json
@@ -86,27 +86,6 @@ class HyperliquidClient:
         raise NotImplementedError("Signed cancel flow is environment-specific and must be supplied for live mode.")
 
 
-def _parse_book_level(level: Any) -> tuple[float, float] | None:
-    """Accepts Hyperliquid level entries in list or dict form and returns (price, size)."""
-    if isinstance(level, (list, tuple)) and len(level) >= 2:
-        try:
-            return float(level[0]), float(level[1])
-        except (TypeError, ValueError):
-            return None
-
-    if isinstance(level, dict):
-        price_raw = level.get("px")
-        size_raw = level.get("sz")
-        if price_raw is None or size_raw is None:
-            return None
-        try:
-            return float(price_raw), float(size_raw)
-        except (TypeError, ValueError):
-            return None
-
-    return None
-
-
 class MarketDataAdapter:
     def __init__(self, client: HyperliquidClient, symbol: str, interval: str) -> None:
         self.client = client
@@ -124,14 +103,8 @@ class MarketDataAdapter:
         asks = book.get("levels", [[], []])[1]
         if not bids or not asks:
             return 99999.0
-
-        bid = _parse_book_level(bids[0])
-        ask = _parse_book_level(asks[0])
-        if bid is None or ask is None:
-            return 99999.0
-
-        best_bid, _ = bid
-        best_ask, _ = ask
+        best_bid = float(bids[0][0])
+        best_ask = float(asks[0][0])
         mid = (best_bid + best_ask) / 2
         if mid <= 0:
             return 99999.0
@@ -141,12 +114,6 @@ class MarketDataAdapter:
         book = self.client.l2_book(self.symbol)
         bids = book.get("levels", [[], []])[0]
         asks = book.get("levels", [[], []])[1]
-
-        bid = _parse_book_level(bids[0]) if bids else None
-        ask = _parse_book_level(asks[0]) if asks else None
-        if bid is None or ask is None:
-            return 0.0
-
-        _, bid_size = bid
-        _, ask_size = ask
+        bid_size = float(bids[0][1]) if bids else 0.0
+        ask_size = float(asks[0][1]) if asks else 0.0
         return min(bid_size, ask_size)
